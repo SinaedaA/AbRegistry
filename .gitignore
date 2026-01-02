@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Airflow
+logs/
+airflow.cfg
+airflow.db
+airflow-webserver.pid
+config/airflow.cfg
+
+# Data files (archived/processed data shouldn't be in git)
+data/archive/
+data/lab_uploads/*.csv
+data/oas/
+# Keep .gitkeep files to preserve directory structure
+!data/archive/.gitkeep
+!data/lab_uploads/.gitkeep
+
+# Keep raw data structure but ignore contents
+data/raw/*.csv
+!data/raw/.gitkeep
+
+# Environment
+.env
+*.env
+.venv/
+venv/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Office temp files
+~$*.xlsx
+~$*.docx
+
+# Docker volumes (if any)
+postgres-db-volume/
+
+# Logs
+*.log

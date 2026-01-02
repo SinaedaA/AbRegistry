@@ -1,0 +1,27 @@
+# requirements.txt
+# Data processing
+polars==0.20.3
+pandas==2.1.4
+
+# Bioinformatics
+biopython==1.81
+
+# Database
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+
+# Data validation
+#pydantic>=2.10.0 # airflow includes it already
+
+# API integration (for UniProt)
+requests==2.31.0
+
+# For later: KA-Search
+#kasearch  # Add when you reach Week 2
+
+# Antibody numbering
+antpack==0.3.8.6
+
+# For later: dbt
+# dbt-core==1.7.0
+# dbt-postgres==1.7.0
