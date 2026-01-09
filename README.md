@@ -4,7 +4,7 @@ A scalable data engineering solution for managing therapeutic antibody discovery
 
 ## 🎯 Project Overview
 
-AbRegistry addresses the challenge of unifying antibody sequence data from multiple sources (public databases like SAbDab, internal lab notebooks) into a single, validated repository for discovery analytics. The pipeline automates data ingestion, validation, deduplication, and structural analysis.
+AbRegistry addresses the challenge of unifying antibody discovery data from multiple sources (public databases like SAbDab, internal lab notebooks) into a single, validated repository for discovery analytics. The pipeline automates data ingestion, validation, deduplication, and structural analysis.
 
 ### Key Features
 - **Automated data ingestion** from SAbDab therapeutic antibody database (~10k sequences) - Other sources to follow.
@@ -14,6 +14,39 @@ AbRegistry addresses the challenge of unifying antibody sequence data from multi
 - **Quality control** through Pydantic validation and BioPython sequence analysis
 - **Smart deduplication** using KA-Search for antibody-aware similarity detection
 - **Structured transformations** via dbt for analytics-ready data models
+
+### Typical Antibody Discovery Workflow
+
+```mermaid
+graph TD
+    A[🎯 Target Identification] --> B[🧬 Antigen Design]
+    B --> C[💉 Screening & Hit Selection]
+    C --> D[🧑‍🔬 Ab Engineering / Optimization]
+    D --> E[⚙️ Functional Characterization]
+    E --> F[📈 Developability Assessment]
+```
+
+As I don't have access to real lab notebook data, I simulate lab uploads by randomly sampling and mutating sequences from SAbDab. We can categorize the data associated with each antibody into 4 classes (at simulation time):      
+1. <u>**Sequence Data</u>:** Heavy and light chain sequences (_VH_, _VL_), _antibody format_, _VD LC_, **CDR region coordinates**. 
+2. <u>**Target Information</u>:** _Antigen names_, UniProt IDs, _Application context_ (disease- and/or tissue-specificity), Affinity, ...
+3. <u>**Origin of data</u>:** project name, researcher, company, discovery date -- randomly assigned during simulation
+4. <u>**Metadata</u>:** everything else, which can evolve as the research advances:
+   1. <u>Development metadata</u>: _development technology_, clinical trial phase, developability metrics, ... 
+   2. <u>Structural metadata</u>: **similarity search results**, ...
+   3. <u>Functional metadata</u>: assay results, epitope mapping, ...
+   4. <u>Manufacturing metadata</u>: _expression system_, yield, stability, ...
+   5. <u>Regulatory metadata</u>: patent status, regulatory filings, ...
+
+NB: _italicized_ terms indicate that the data comes from the SAbDab database (used to simulate lab data), while **bold** terms indicate data that is computed during the pipeline (e.g. CDR coordinates, similarity search results). Other terms are either randomly assigned during simulation, or are possible fields for real lab notebook uploads/updates.
+
+### Simulated Lab Data Generation Workflow
+
+```mermaid
+graph LR
+    A[🫙 SAbDab Database] --> B[Random Sampling (HC and LC, format, VD LC, Targets, Dev Tech)]
+    B --> C[🐜 CDR3 Mutation Application (AntPack)]
+    C --> D[Assignment of Lab Metadata (Project, Researcher, Company, Date)]
+```
 
 ---
 
@@ -154,6 +187,7 @@ Find new files → Validate format → Branch
 - [x] Docker infrastructure setup
 - [x] Database models and schema
 - [x] SAbDab data ingestion
+- [x] Simulated lab data generation
 - [x] Lab file validation pipeline
 - [x] Automated orchestration with Airflow
 - [ ] Data validation with Pydantic
@@ -169,6 +203,10 @@ Find new files → Validate format → Branch
 - Enhanced query interface (**web app**)
 - Advanced analytics (e.g. clustering, visualization)
 - Implementation of HELM notation for antibody sequences
+- Partial ingestion of Ab sequence files from 'lab notebooks' with detailed error reporting (when many seqs are uploaded at once, and a small subset are not valid Ab sequences)
+  - configurable threshold based validation (e.g. <10% invalid → partial ingest) - Airflow variables
+  - archive/partial/ subdirectory for partially valid files
+  - user notification system
 
 ---
 

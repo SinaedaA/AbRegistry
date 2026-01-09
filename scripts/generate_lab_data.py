@@ -1,34 +1,39 @@
 import polars as pl
 import random
 from datetime import datetime, timedelta
+import json
 from antpack import SingleChainAnnotator
+from scripts.antpack_annotation import find_region_indices
 
+COMPANY_NAME = "ImmunoTech Labs"
 RESEARCHERS = [
     "Dr. Alice Smith",
     "Dr. Bob Johnson",
     "Dr. Carol Williams",
     "Dr. David Brown",
     "Dr. Eve Davis"]
-LAB_NAMES = [
-    "ImmunoTech Labs",
-    "BioAntibody Research",
-    "NextGen Antibodies",
-    "Precision Biologics",
-    "Advanced Immunology Center"]
 PROJECTS = [
     "Cancer Immunotherapy",
     "Autoimmune Disease Study",
     "Infectious Disease Response",
     "Vaccine Development",
     "Neurological Disorder Research"]
+CONDITIONS_ACTIVE = [
+    "Non-small cell lung cancer;Oesophageal cancer;Cancer;Solid tumours",
+    "Autoimmune disorders;Crohn's disease;Rheumatoid arthritis",
+    "Bacterial infections;Sepsis;Antibiotic resistance",
+    "Viral infections;COVID-19;SARS-CoV-2",
+    "Neurodegenerative diseases;Alzheimer's disease;Parkinson's disease"
+]
+#POTENTIAL_NAMES = json.load(open('data/lab_uploads/potential_antibody_names.json'))
 
-def generate_lab_sequences(num_sequences=10, outfile='data/lab_uploads/simulated_lab_data.csv'):
+def generate_lab_sequences(num_sequences=10, outfile='data/lab_uploads/simulated_lab_data.csv', ab_names = None):
     # 1. Read SAbDab data as templates
     df = pl.read_csv("data/raw/sabdab_summary.csv")
     # 2. Pick random sequences
     sampled_df = df.sample(n=num_sequences, with_replacement=False)
     # extract only HeavySequence and LightSequence columns
-    sequences = sampled_df.select(["HeavySequence", "LightSequence", "Format"])
+    sequences = sampled_df.select(["HeavySequence", "LightSequence", "Format", "Target", "Development Tech", "Genetics (Bispecifics delimited with semicolon)"])
     # 3. Annotate with AntPack
     vd_lcs_ann_seqs = antpack_annotation(sequences.select(["HeavySequence", "LightSequence"]))
     vd_lcs = vd_lcs_ann_seqs[0]
@@ -42,7 +47,7 @@ def generate_lab_sequences(num_sequences=10, outfile='data/lab_uploads/simulated
     # 5. Mutate the CDR3 regions
     mutated_df = mutate_sequences(region_coord_df=region_coord_df)
     # 6. Add fake lab metadata
-    simulated_lab_df = make_lab_data(mutated_df)
+    simulated_lab_df = make_lab_data(df = mutated_df, ab_names = ab_names)
     # 7. Save as CSV
     simulated_lab_df.write_csv(outfile)
 
@@ -84,6 +89,9 @@ def extract_region_coordinates(sequences, annotated_sequences, num_sequences, vd
         heavy_seq = sequences[seq_idx, 0]
         light_seq = sequences[seq_idx, 1]
         ab_format = sequences[seq_idx, 2]
+        target = sequences[seq_idx, 3]
+        dev_tech = sequences[seq_idx, 4]
+        genetics = sequences[seq_idx, 5]
         vd_lc_short = vd_lcs[light_idx]
         vd_lc = 'Lambda' if vd_lc_short == 'L' else 'Kappa'
         
@@ -93,7 +101,10 @@ def extract_region_coordinates(sequences, annotated_sequences, num_sequences, vd
             "heavy_sequence": heavy_seq,
             "light_sequence": light_seq,
             "ab_format": ab_format,
+            "target": target,
             "vd_lc": vd_lc,
+            "development_tech": dev_tech,
+            "genetics": genetics,
             "heavy_cdr3_start": heavy_regions.get('cdr3', (None, None))[0],
             "heavy_cdr3_end": heavy_regions.get('cdr3', (None, None))[1],
             "light_cdr3_start": light_regions.get('cdr3', (None, None))[0],
@@ -101,30 +112,6 @@ def extract_region_coordinates(sequences, annotated_sequences, num_sequences, vd
             # "fmwk1_coords": [heavy_regions.get('fmwk1', (None, None))] + [light_regions.get('fmwk1', (None, None))], ETCTEREA IF NEEDED
         })
     return pl.DataFrame(region_coord_data)
-
-def find_region_indices(labels):
-    """
-    Docstring for find_region_indices. Used by extract_region_coordinates.
-
-    :param labels: List of region labels from AntPack annotation
-    :return: Dictionary with region names as keys and (start_idx, end_idx) tuples as values
-    """
-    regions = {}
-    current_region = None
-    start_idx = 0
-    
-    for idx, label in enumerate(labels):
-        if label != current_region:
-            if current_region is not None:
-                regions[current_region] = (start_idx, idx)
-            current_region = label
-            start_idx = idx
-    
-    # Add the last region
-    if current_region is not None:
-        regions[current_region] = (start_idx, len(labels))
-    
-    return regions
 
 def mutate_sequences(region_coord_df):
     """
@@ -144,9 +131,11 @@ def mutate_sequences(region_coord_df):
             cdr3_start=row["light_cdr3_start"],
             cdr3_end=row["light_cdr3_end"])
         mutated_sequences.append({
-            "ab_name": f"LAB_{len(mutated_sequences)+1:03d}",
             "ab_format": row["ab_format"],
+            "target": row["target"],
             "vd_lc": row["vd_lc"],
+            "development_tech": row["development_tech"],
+            "genetics": row["genetics"],
             'heavy_chain1': heavy_mutated,
             'light_chain1': light_mutated,
             'notes': f"Mutated CDR3 from SAbDab {row['ab_format']} template."
@@ -172,7 +161,7 @@ def mutate_cdr3(seq, cdr3_start, cdr3_end, num_mutations=3):
     # Only mutate within CDR3
     cdr3_positions = list(range(cdr3_start, cdr3_end))
     positions_to_mutate = random.sample(
-        cdr3_positions, 
+        cdr3_positions,
         min(num_mutations, len(cdr3_positions))
     )
     
@@ -183,29 +172,32 @@ def mutate_cdr3(seq, cdr3_start, cdr3_end, num_mutations=3):
     
     return ''.join(seq_list)
 
-def make_lab_data(df):
+def make_lab_data(df, ab_names = None):
     """
     Docstring for make_lab_data
     
-    :param df: Dataframe to which to add random lab metadata
-    :return: Dataframe with added lab metadata
+    :param df: Dataframe to which to add random project metadata
+    :return: Dataframe with added project metadata
     """
     final_data = []
-    idx = random.randint(0, len(LAB_NAMES)-1) # pick a random lab, researcher, project for all sequences
+    idx = random.randint(0, len(PROJECTS)-1) # pick a random project and researcher for all sequences (and use the same company for all)
     for row in df.iter_rows(named = True):
-        lab = LAB_NAMES[idx]
+        company = COMPANY_NAME
         researcher = RESEARCHERS[idx]
         project = PROJECTS[idx]
+        conditions_active = CONDITIONS_ACTIVE[idx]
         upload_date = datetime.now() - timedelta(days=random.randint(0, 30))
         final_data.append({
+            "ab_name": ab_names.pop() if ab_names else f"LAB_AB_{random.randint(10000,99999)}",
             **row,
-            "lab_name": lab,
+            "company": company,
             "researcher": researcher,
             "project": project,
+            "conditions_active": conditions_active,
             "upload_date": upload_date.strftime("%Y-%m-%d")
         })
     df = pl.DataFrame(final_data)
-    print(f"{researcher} generated {len(df)} new antibody sequences for project {project}. Lab: {lab}.")
+    print(f"{researcher} generated {len(df)} new antibody sequences for project {project}. Company: {company}.")
     return df
 
 if __name__ == "__main__":

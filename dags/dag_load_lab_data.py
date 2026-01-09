@@ -1,8 +1,8 @@
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator, BranchPythonOperator
 from datetime import datetime
+import traceback
 
-#@task
 def task_find_new_files(upload_dir = '/opt/airflow/data/lab_uploads/', **context):
     """
     Task to find new lab data CSV files in the upload directory.
@@ -71,7 +71,6 @@ def task_ingest_valid_files(**context):
             archive_invalid_file(file_str, '/opt/airflow/data/archive/', 'flagged', datetime.now().strftime('%Y%m%d'))
             raise
 
-
 def task_notify_no_valid_files():
     """
     Task to notify that no valid files were found for ingestion.
@@ -99,6 +98,57 @@ def task_archive_valid_files(archive_dir = '/opt/airflow/data/archive', **contex
         shutil.move(str(source), str(dest))
         print(f"✓ Archived valid: {source.name}")
 
+def task_antpack_annotate_load(**context):
+    """
+    Task to annotate sequences using Antpack.
+    """
+    from scripts.antpack_annotation import main as antpack_main
+
+    files = context['ti'].xcom_pull(task_ids='validate_csv', key='valid_files')
+    print(files)
+    for file_str in files:
+        try:
+            antpack_main(file_str)
+            print(f"Annotated sequences from {file_str} successfully, and loaded them to antpack_annotations table.")
+        except Exception as e:
+            print(f"Error annotating sequences from {file_str}: {e}")
+            traceback.print_exc()
+            raise
+
+def task_protparam_annotate_load(**context):
+    """
+    Task to annotate sequences using ProtParam.
+    """
+    from scripts.prot_param import main as protparam_main
+
+    files = context['ti'].xcom_pull(task_ids='validate_csv', key='valid_files')
+    print(files)
+    for file_str in files:
+        try:
+            protparam_main(file_str)
+            print(f"Annotated sequences from {file_str} successfully, and loaded them to protein_properties table.")
+        except Exception as e:
+            print(f"Error annotating sequences from {file_str}: {e}")
+            traceback.print_exc()
+            raise
+
+def task_analyze_liabilities_load(**context):
+    """
+    Task to analyze liabilities in sequences and load them into the database.
+    """
+    from scripts.liabilities import main as liabilities_main
+
+    files = context['ti'].xcom_pull(task_ids='validate_csv', key='valid_files')
+    print(files)
+    for file_str in files:
+        try:
+            liabilities_main(file_str)
+            print(f"Analyzed liabilities from {file_str} successfully, and loaded them to liabilities table.")
+        except Exception as e:
+            print(f"Error analyzing liabilities from {file_str}: {e}")
+            traceback.print_exc()
+            raise
+
 with DAG(
     dag_id = 'load_lab_data',
     start_date = datetime(2024, 1, 1),
@@ -122,6 +172,21 @@ with DAG(
         python_callable=task_ingest_valid_files
     )
     
+    antpack_annotation_load = PythonOperator(
+        task_id='antpack_annotation_load',
+        python_callable=task_antpack_annotate_load,
+    )
+
+    protparam_annotation_load = PythonOperator(
+        task_id='protparam_annotation_load',
+        python_callable=task_protparam_annotate_load,
+    )
+
+    liabilities = PythonOperator(
+        task_id='liabilities_analysis_load',
+        python_callable=task_analyze_liabilities_load,
+    )
+
     notify = PythonOperator(
         task_id='notify_no_valid_files',
         python_callable=task_notify_no_valid_files
@@ -133,5 +198,5 @@ with DAG(
         op_kwargs={'archive_dir': '/opt/airflow/data/archive/'}
     )
     find_new_files >> validate_csv
-    validate_csv >> ingest >> archive
+    validate_csv >> ingest >> antpack_annotation_load >> protparam_annotation_load >> liabilities >> archive
     validate_csv >> notify

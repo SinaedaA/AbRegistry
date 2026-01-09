@@ -1,7 +1,8 @@
 from database.database import engine, Base
+from database.models import RawSequence, IngestionLog
 from sqlalchemy.schema import CreateSchema
 
-def main():
+def init_db():
     conn = engine.connect()
     schemas = ['staging', 'intermediate', 'mart']
     for schema in schemas:
@@ -13,5 +14,10 @@ def main():
     conn.commit()
     conn.close()
 
-if __name__ == "__main__":
-    main()
+def create_tables():
+    print("Dropping existing tables...")
+    Base.metadata.drop_all(bind=engine)
+
+    print("Creating database tables...")
+    Base.metadata.create_all(bind=engine, checkfirst=True)
+    print("Tables created successfully.")
